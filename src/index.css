@@ -1,68 +1,436 @@
-:root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
+@import "tailwindcss";
 
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
+/* =========================================
+   Tema Tickets 2025 — Paleta con mayor contraste
+   ========================================= */
+:root{
+  --primary:#0056FF;     /* azul vivo (mejor legibilidad) */
+  --secondary:#0040C1;   /* azul intenso */
+  --tertiary:#4CD4F7;    /* celeste brillante */
+  --accent:#00E0A4;      /* verde agua saturado */
+  --lime:#7ED957;        /* verde lima claro */
 
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-a:hover {
-  color: #535bf2;
+  --ink:#0a0f1a;         /* texto principal */
+  --bg:#f2f5fa;          /* fondo claro frío */
+  --card:#ffffff;        /* tarjetas blancas */
+  --line:#cdd7e5;        /* bordes suaves */
+  --muted:#475569;       /* texto gris oscuro */
 }
 
-body {
-  margin: 0;
-  display: flex;
-  place-items: center;
-  min-width: 320px;
-  min-height: 100vh;
+:root[data-theme="dark"]{
+  --primary:#4DA3FF;     /* azul brillante en oscuro */
+  --secondary:#1E3A8A;   /* azul profundo */
+  --tertiary:#5EEAD4;    /* celeste/verde neón */
+  --accent:#22D3EE;      /* cian vívido */
+  --lime:#93E01F;        /* verde brillante */
+
+  --bg:#0B1120;          /* fondo casi negro */
+  --ink:#E2E8F0;         /* texto muy claro */
+  --card:#1E293B;        /* gris-azul suave */
+  --line:#334155;        /* bordes fríos */
+  --muted:#A0AEC0;       /* texto gris tenue */
 }
 
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
+/* Reset mínimo */
+*{box-sizing:border-box;margin:0;padding:0}
+html,body,#root{height:100%}
+body{
+  font-family: system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial;
+  color:var(--ink);
+  background:var(--bg);
 }
 
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: #1a1a1a;
-  cursor: pointer;
-  transition: border-color 0.25s;
-}
-button:hover {
-  border-color: #646cff;
-}
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
+/* Titulares */
+h1{font-size:clamp(1.6rem,2.5vw,2rem);font-weight:800;letter-spacing:-.02em;color:var(--primary);margin:.5rem 0 1rem}
+h2,h3{font-weight:700;color:var(--ink)}
+.muted{color:var(--muted)}
+
+/* Utilidad: texto con gradiente (usa en títulos/marca) */
+.text-gradient-blue{
+  background: linear-gradient(90deg, var(--primary) 0%, var(--accent) 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
+/* Inputs */
+input,select{
+  border:1px solid var(--line);
+  border-radius:.6rem;
+  padding:.48rem .7rem;
+  font-size:.95rem;
+  background:#fff;
+  width:100%;
+  color:var(--ink);
+}
+input:focus,select:focus{
+  outline:none;
+  box-shadow:0 0 0 3px color-mix(in srgb, var(--primary) 20%, transparent);
+  border-color:color-mix(in srgb, var(--primary) 30%, var(--line));
+}
+input::placeholder, select::placeholder{
+  color: color-mix(in srgb, var(--muted) 70%, var(--ink));
+  opacity:.85;
+}
+:root[data-theme="dark"] input,
+:root[data-theme="dark"] select{
+  background: color-mix(in srgb, var(--card) 92%, #000);
+  color: var(--ink);
+  border-color: #3a4a6a;
+}
+:root[data-theme="dark"] input::placeholder,
+:root[data-theme="dark"] select::placeholder{
+  color: color-mix(in srgb, var(--ink) 65%, var(--muted));
+  opacity: .9;
+}
+
+/* ===== Botones ===== */
+button,.btn{
+  display:inline-flex;align-items:center;justify-content:center;
+  padding:.38rem .63rem;
+  border:1px solid transparent;border-radius:.55rem;
+  font-weight:700;font-size:.92rem;cursor:pointer;color:#fff;
+  transition:opacity .2s ease,box-shadow .2s ease,transform .08s ease-in-out, background .2s;
+}
+
+/* Gradiente dinámico animado para botones principales */
+.btn, .btn--gradient{
+  background: linear-gradient(135deg, var(--primary), var(--accent));
+  background-size: 200% 200%;
+  animation: gradientShift 6s ease infinite;
+  border: none;
+}
+.btn:hover, .btn--gradient:hover{
+  animation-play-state: paused;
+  transform: translateY(-1px) scale(1.01);
+  box-shadow: 0 6px 20px color-mix(in srgb, var(--primary) 20%, transparent);
+}
+@keyframes gradientShift{
+  0%{background-position:0% 50%}
+  50%{background-position:100% 50%}
+  100%{background-position:0% 50%}
+}
+
+/* Botón fantasma (bordeado) */
+.btn--ghost{background:#fff;color:var(--primary);border-color:var(--line)}
+:root[data-theme="dark"] .btn--ghost{
+  background: color-mix(in srgb, var(--card) 88%, #000);
+  color: var(--ink);
+  border-color: #3a4a6a;
+}
+:root[data-theme="dark"] .btn--ghost:hover{
+  background: color-mix(in srgb, var(--accent) 12%, var(--card));
+}
+
+/* Botón sólido neutral (para “Recargar”) */
+.btn--solid{
+  background: var(--primary);
+  border: none;
+}
+.btn--solid:hover{
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--primary) 25%, transparent);
+}
+
+/* Botón “peligro” (para “Borrar compras locales”) */
+.btn--danger{
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  border: none;
+}
+.btn--danger:hover{
+  box-shadow: 0 6px 18px color-mix(in srgb, #ef4444 25%, transparent);
+}
+
+/* Ajustes de paddings heredados de utilidades inline */
+button[class*="px-4"], .w-full.px-4.py-2{padding:.45rem .7rem !important;border-radius:.55rem !important}
+.px-3.py-1.border.rounded{padding:.22rem .5rem !important}
+
+/* Contenedores base */
+.container{max-width:1120px;margin-inline:auto;padding:1rem}
+.row{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.75rem}
+
+/* ===== Header (glass + sticky) ===== */
+header{
+  background:linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--primary) 12%, var(--card)) 0%,
+    var(--card) 90%
+  );
+  border-bottom:1px solid var(--line);
+  position:sticky;top:0;z-index:50;
+  backdrop-filter:saturate(1.3) blur(12px);
+  -webkit-backdrop-filter:saturate(1.3) blur(12px);
+  box-shadow: 0 4px 25px color-mix(in srgb, var(--primary) 8%, transparent);
+}
+header .max-w-6xl{display:flex;align-items:center;justify-content:space-between;height:60px}
+header a{text-decoration:none;color:var(--ink);font-weight:600;transition:color .2s,background .2s}
+header a:hover{color:var(--primary)}
+header nav a{padding:.45rem .75rem;border-radius:.5rem}
+header nav a.bg-black{background:var(--primary)!important;color:#fff!important}
+header nav a.bg-black:hover{background:var(--secondary)!important}
+header .font-semibold.tracking-tight{font-size:1.25rem;font-weight:900;letter-spacing:-.02em;color:var(--primary)}
+
+/* ===== Tarjetas y grillas ===== */
+.card{
+  border:1px solid var(--line);border-radius:.75rem;background:var(--card);
+  overflow:hidden;transition:box-shadow .2s,transform .2s, background .3s ease;
+  backdrop-filter: saturate(1.1) blur(8px);
+  -webkit-backdrop-filter: saturate(1.1) blur(8px);
+  background: color-mix(in srgb, var(--card) 90%, transparent);
+  opacity:0; transform: translateY(8px);
+  animation: fadeInUp .6s ease forwards;
+}
+.card:hover{
+  box-shadow:0 10px 30px color-mix(in srgb, var(--primary) 15%, transparent);
+  transform: translateY(-3px) scale(1.005);
+}
+.card-body{padding:.9rem 1rem}
+.card-title{font-weight:800;margin-bottom:.3rem;font-size:1rem;color:var(--ink)}
+.card-meta{color:var(--muted);font-size:.85rem}
+
+.grid-3{display:grid;grid-template-columns:repeat(1,minmax(0,1fr));gap:.9rem}
+@media (min-width:640px){.grid-3{grid-template-columns:repeat(2,1fr)}}
+@media (min-width:1024px){.grid-3{grid-template-columns:repeat(3,1fr)}}
+/* pequeño "stagger" */
+.grid-3 > .card:nth-child(1){animation-delay:.03s}
+.grid-3 > .card:nth-child(2){animation-delay:.06s}
+.grid-3 > .card:nth-child(3){animation-delay:.09s}
+.grid-3 > .card:nth-child(4){animation-delay:.12s}
+
+/* Imágenes pequeñas (cards) */
+.card-img,.w-full.h-40.object-cover{
+  width:100%;height:90px;object-fit:cover;border-radius:.5rem;background:color-mix(in srgb, var(--secondary) 10%, #eef2f2)
+}
+@media (max-width:640px){.card-img,.w-full.h-40.object-cover{height:72px}}
+
+/* ===== Lista de compras (historial) ===== */
+.space-y-3{display:grid;grid-template-columns:1fr;gap:1rem}
+@media (min-width:1024px){.space-y-3{grid-template-columns:1fr 1fr}}
+.space-y-3 > .rounded-lg.border.bg-white.p-4{
+  border:1px solid var(--line);border-radius:.75rem;background:#fff;padding:1rem;
+  display:grid;grid-template-columns:auto 1fr;gap:.8rem;align-items:start;transition:box-shadow .2s;
+  backdrop-filter: saturate(1.05) blur(6px);
+  -webkit-backdrop-filter: saturate(1.05) blur(6px);
+  color: var(--ink);
+}
+.space-y-3 > .rounded-lg.border.bg-white.p-4:hover{box-shadow:0 6px 20px color-mix(in srgb, var(--primary) 10%, transparent)}
+.space-y-3 img{width:76px;height:76px;object-fit:cover;border-radius:.6rem;border:1px solid var(--line)}
+.space-y-3 ul{margin:.4rem 0 0 1rem;font-size:.95rem;color:color-mix(in srgb, var(--ink) 85%, var(--muted))}
+:root[data-theme="dark"] .space-y-3 > .rounded-lg.border.bg-white.p-4{
+  background: color-mix(in srgb, var(--card) 90%, #000);
+  border-color:#2b3a57;
+  color: var(--ink);
+}
+:root[data-theme="dark"] .space-y-3 ul{color: color-mix(in srgb, var(--ink) 88%, var(--muted))}
+
+/* ===== Detalle de evento ===== */
+:where(.grid.gap-6)[class*="md:grid-cols-[1fr,0.9fr]"]{
+  display:grid;grid-template-columns:1fr;gap:1rem;align-items:start
+}
+@media (min-width:960px){
+  :where(.grid.gap-6)[class*="md:grid-cols-[1fr,0.9fr]"]{grid-template-columns:1.1fr .9fr}
+  :where(.grid.gap-6)[class*="md:grid-cols-[1fr,0.9fr]"] > :first-child.rounded-lg.border.bg-white{
+    display:grid;grid-template-columns:.9fr 1.1fr;gap:1rem;align-items:start;padding:1rem
   }
-  a:hover {
-    color: #747bff;
-  }
-  button {
-    background-color: #f9f9f9;
-  }
+  :where(.grid.gap-6)[class*="md:grid-cols-[1fr,0.9fr]"] > :first-child.rounded-lg.border.bg-white > img.w-full.h-64.object-cover{grid-column:1}
+  :where(.grid.gap-6)[class*="md:grid-cols-[1fr,0.9fr]"] > :first-child.rounded-lg.border.bg-white > .p-5{grid-column:2;padding:0}
+}
+.w-full.h-64.object-cover{
+  height:200px;max-height:200px;object-fit:cover;border-radius:.75rem;border:1px solid var(--line);
+  background:color-mix(in srgb, var(--tertiary) 18%, #e9f0ef);display:block
+}
+:where(.grid.gap-6)[class*="md:grid-cols-[1fr,0.9fr]"] > :first-child h1{
+  font-size:clamp(1.25rem,2vw,1.6rem);line-height:1.15;margin:.25rem 0 .4rem;color:var(--primary);font-weight:900
+}
+:where(.grid.gap-6)[class*="md:grid-cols-[1fr,0.9fr]"] .text-gray-700,
+:where(.grid.gap-6)[class*="md:grid-cols-[1fr,0.9fr]"] .text-sm{color:var(--muted);font-size:.95rem}
+
+/* ===== Caja de “Resumen” (evento y checkout) ===== */
+.summary-box{
+  background: color-mix(in srgb, var(--card) 96%, var(--bg));
+  border:1px solid var(--line);
+  color: color-mix(in srgb, var(--ink) 92%, #000);
+  padding:12px 14px;border-radius:.75rem;
+}
+.summary-box h2,.summary-box h3{color: var(--ink);font-weight:800}
+.summary-box p, .summary-box li{color: color-mix(in srgb, var(--ink) 92%, var(--muted))}
+:root[data-theme="dark"] .summary-box{
+  background: color-mix(in srgb, var(--card) 90%, #000);
+  border-color:#2a3a58;
+  color: var(--ink);
+}
+:root[data-theme="dark"] .summary-box p,
+:root[data-theme="dark"] .summary-box li{
+  color: color-mix(in srgb, var(--ink) 90%, var(--muted));
+}
+
+/* ===== Checkout ===== */
+.checkout-two{display:grid;grid-template-columns:1fr;gap:1rem;max-width:1120px;margin-inline:auto}
+@media (min-width:980px){.checkout-two{grid-template-columns:1.2fr .8fr}}
+.checkout-card{
+  border:1px solid var(--line);border-radius:.8rem;background:#fff;padding:1rem;
+  backdrop-filter:saturate(1.1) blur(10px);
+  -webkit-backdrop-filter:saturate(1.1) blur(10px);
+  color: var(--ink);
+}
+.order-summary{
+  position:sticky;top:1rem;border:1px solid var(--line);border-radius:.9rem;background:#fff;overflow:hidden;
+  backdrop-filter:saturate(1.1) blur(10px);
+  -webkit-backdrop-filter:saturate(1.1) blur(10px);
+  color: var(--ink);
+}
+.order-summary .banner{width:100%;height:160px;object-fit:cover;background:#e8efef;border-bottom:1px solid var(--line)}
+.order-summary .body{padding:12px 14px}
+.order-summary .title{font-weight:900;letter-spacing:-.02em;color:var(--primary)}
+.order-summary .meta{color:color-mix(in srgb, var(--ink) 85%, var(--muted));font-size:.95rem;margin-top:.25rem}
+.order-summary .total{margin-top:.5rem;font-weight:900;color:var(--secondary)}
+:root[data-theme="dark"] .checkout-card,
+:root[data-theme="dark"] .order-summary{
+  background: color-mix(in srgb, var(--card) 90%, #000);
+  border-color:#2b3a57;
+  color: var(--ink);
+}
+:root[data-theme="dark"] .order-summary .meta{
+  color: color-mix(in srgb, var(--ink) 88%, var(--muted));
+}
+
+/* Formulario checkout */
+.form-grid{display:grid;gap:.8rem}
+@media (min-width:640px){.form-grid{grid-template-columns:1fr 1fr}}
+.form-grid label span{font-size:.9rem;color:color-mix(in srgb, var(--ink) 85%, var(--muted))}
+.actions button{width:100%}
+
+/* ===== Paginación ===== */
+.pagination{
+  display:flex;gap:.4rem;align-items:center;justify-content:center;margin:1.25rem 0 0;flex-wrap:wrap
+}
+.page-btn{
+  border:1px solid var(--line);background:#fff;color:var(--ink);
+  padding:.3rem .55rem;border-radius:.5rem;font-weight:800;font-size:.92rem;cursor:pointer
+}
+.page-btn:hover{background:color-mix(in srgb, var(--tertiary) 12%, #fff)}
+.page-btn:disabled{opacity:.7;cursor:not-allowed;color: color-mix(in srgb, var(--muted) 70%, #fff); background: color-mix(in srgb, var(--line) 65%, #fff)}
+.page-btn.active,[aria-current="page"]{background:var(--primary);color:#fff;border-color:transparent}
+.page-dots{padding:0 .25rem;color:var(--muted)}
+:root[data-theme="dark"] .pagination .page-btn{
+  background: color-mix(in srgb, var(--card) 85%, #000);
+  color: var(--ink);
+  border-color: #3a4a6a;
+}
+:root[data-theme="dark"] .pagination .page-btn:hover{
+  background: color-mix(in srgb, var(--tertiary) 14%, var(--card));
+}
+:root[data-theme="dark"] .pagination .page-btn.active,
+:root[data-theme="dark"] .pagination .page-btn[aria-current="page"]{
+  background: color-mix(in srgb, var(--primary) 85%, #1E293B);
+  color:#fff; border-color:transparent;
+}
+:root[data-theme="dark"] .pagination .page-btn:disabled{
+  color: color-mix(in srgb, var(--ink) 55%, #fff);
+  background:#111a2e; border-color:#2a3a58; opacity:.55;
+}
+
+/* ===== Footer (glass + contraste) ===== */
+footer{
+  margin-top:2rem;
+  background:linear-gradient(180deg, color-mix(in srgb, var(--primary) 12%, #fff), color-mix(in srgb, var(--accent) 8%, #f5fbfa));
+  border-top:1px solid var(--line);
+  color:color-mix(in srgb, var(--ink) 80%, #000);
+  backdrop-filter:saturate(1.1) blur(8px);
+  -webkit-backdrop-filter:saturate(1.1) blur(8px);
+}
+footer .max-w-6xl{
+  display:flex;align-items:center;justify-content:space-between;gap:.75rem;
+  padding:1rem 1rem;
+}
+footer .max-w-6xl::after{
+  content:"Síguenos:  @tickets_cl  ·  /tickets  ·  youtube.com/@tickets  ·  soporte@tickets.cl";
+  font-size:.9rem;color:var(--secondary);
+  white-space:pre-wrap;
+}
+@media (max-width:720px){
+  footer .max-w-6xl{flex-direction:column;align-items:flex-start}
+  footer .max-w-6xl::after{margin-top:.35rem}
+}
+:root[data-theme="dark"] footer{
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, #0B1120 92%, var(--primary) 8%),
+    #0B1120 90%
+  );
+  color: color-mix(in srgb, var(--ink) 92%, #fff);
+  border-top-color: #1f2a44;
+}
+:root[data-theme="dark"] footer .max-w-6xl::after{
+  color: color-mix(in srgb, var(--ink) 92%, #fff);
+  opacity: .85;
+}
+
+/* ===== Responsive ===== */
+@media (max-width:640px){
+  .space-y-3{grid-template-columns:1fr}
+  .w-full.h-64.object-cover{height:150px}
+}
+
+/* ===== Transiciones globales ===== */
+html, body, header, .card, .checkout-card, .order-summary, footer {
+  transition: background-color .18s ease, color .18s ease, border-color .18s ease, box-shadow .18s ease, transform .2s ease;
+}
+
+/* ===== Animaciones suaves (fade-in) ===== */
+@keyframes fadeInUp{
+  from{opacity:0; transform: translateY(8px)}
+  to{opacity:1; transform: translateY(0)}
+}
+
+/* ===== Carrusel (EventDetail) ===== */
+.carousel{ position:relative; }
+.carousel .carousel-nav{
+  position:absolute; top:50%; transform:translateY(-50%);
+  width:36px; height:36px; border-radius:999px;
+  display:flex; align-items:center; justify-content:center;
+  border:1px solid var(--line);
+  background: color-mix(in srgb, var(--card) 82%, transparent);
+  color: var(--ink); font-weight:900; line-height:1;
+  box-shadow: 0 3px 10px color-mix(in srgb, var(--ink) 10%, transparent);
+  cursor:pointer; user-select:none;
+}
+.carousel .carousel-nav:hover{ background: color-mix(in srgb, var(--accent) 10%, var(--card)); }
+.carousel .carousel-nav.left{ left:8px; }
+.carousel .carousel-nav.right{ right:8px; }
+
+.carousel .carousel-dots{
+  position:absolute; left:50%; transform:translateX(-50%);
+  bottom:8px; display:flex; gap:6px; padding:4px 6px;
+  border-radius:999px; background: color-mix(in srgb, var(--card) 80%, transparent);
+  border:1px solid var(--line);
+}
+.carousel .dot{
+  width:8px; height:8px; border-radius:999px; border:0;
+  background: color-mix(in srgb, var(--muted) 60%, #fff);
+  cursor:pointer;
+}
+.carousel .dot.active{ background: var(--primary); }
+
+/* ===== Correcciones de contraste adicionales en oscuro ===== */
+:root[data-theme="dark"] header,
+:root[data-theme="dark"] .card,
+:root[data-theme="dark"] .checkout-card,
+:root[data-theme="dark"] .order-summary{
+  background: color-mix(in srgb, var(--card) 90%, #000);
+  color: var(--ink);
+  border-color: #31405e;
+}
+
+/* Forzar legibilidad de textos “apagados” dentro de superficies claras/vidriadas */
+:root[data-theme="dark"] .rounded-lg.border.bg-white,
+:root[data-theme="dark"] .rounded-lg.border.bg-white *{
+  color: color-mix(in srgb, var(--ink) 92%, var(--muted));
+}
+:root[data-theme="dark"] .rounded-lg.border.bg-white h3,
+:root[data-theme="dark"] .rounded-lg.border.bg-white strong{
+  color: var(--ink);
+}
+
+/* El bloque de resumen queda legible en ambos modos */
+.summary-box .text-gray-600,
+.summary-box .text-gray-700{
+  color: color-mix(in srgb, var(--ink) 92%, var(--muted));
 }

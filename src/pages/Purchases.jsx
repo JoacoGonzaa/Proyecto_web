@@ -7,9 +7,8 @@ export default function Purchases() {
   const [raw, setRaw] = useState(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(null);
-  const [showDebug, setShowDebug] = useState(true); // déjalo en true mientras probamos
+  const [showDebug, setShowDebug] = useState(false); // oculto por defecto
 
-  // Intenta extraer una lista desde múltiples shapes comunes
   function extractList(res) {
     if (Array.isArray(res)) return res;
     if (Array.isArray(res?.data)) return res.data;
@@ -24,23 +23,17 @@ export default function Purchases() {
     (async () => {
       try {
         const res = await api.getPurchases();
-        console.log("[/purchases] raw response:", res);
         if (!active) return;
         setRaw(res);
-
         const serverList = extractList(res);
         const locals = JSON.parse(localStorage.getItem("purchases:local") || "[]");
         setLocalPurchases(locals);
 
-        // Mezclar y desduplicar por id
         const idOf = (p) => p?.purchase_id || p?.id || p?._id || "";
         const map = new Map();
         [...serverList, ...locals].forEach((p) => map.set(idOf(p), p));
-        const merged = Array.from(map.values()).filter(Boolean);
-
-        setPurchases(merged);
+        setPurchases(Array.from(map.values()).filter(Boolean));
       } catch (e) {
-        console.error("[/purchases] error:", e);
         if (!active) return;
         const msg =
           e?.message ||
@@ -51,40 +44,33 @@ export default function Purchases() {
         if (active) setLoading(false);
       }
     })();
-    return () => {
-      active = false;
-    };
+    return () => (active = false);
   }, []);
 
   const hint = useMemo(() => {
-    if (loading || err) return "";
-    if (purchases.length > 0) return "";
-    // Si llegó vacío, damos pistas útiles
+    if (loading || err || purchases.length > 0) return "";
     return [
       "No llegaron compras desde la API.",
-      "• Revisa en DevTools > Network que /checkout devolvió 200 y no 4xx.",
-      "• Asegúrate de no haber cambiado de ventana o refrescado entre reserva y checkout (algunos backends atan la compra a la misma sesión/cookie).",
-      "• Verifica que el endpoint de historial responde 200 y qué JSON trae (mira el panel de abajo).",
+      "• Revisa en Network que /checkout devolvió 200.",
+      "• El endpoint de historial puede variar (orders, sales, transactions).",
     ].join("\n");
   }, [loading, err, purchases.length]);
 
   if (loading) return <div className="p-4">Cargando historial…</div>;
-  if (err) return <div className="p-4 text-red-600">Error: {err}</div>;
+  if (err) return <div className="p-4 rounded-lg bg-red-50 border text-red-700">{err}</div>;
 
   return (
-    <div className="p-4 max-w-5xl mx-auto">
-      <div className="flex items-center gap-2 justify-between mb-3">
-        <h1 className="text-2xl font-bold">Historial de compras</h1>
+    <section className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-semibold">Historial de compras</h1>
         <div className="flex gap-2">
-          <button
-            className="px-3 py-2 border rounded"
-            onClick={() => window.location.reload()}
-          >
+          {/* 🔁 Botones visibles en claro/oscuro */}
+          <button className="btn btn--solid" onClick={() => window.location.reload()}>
             Recargar
           </button>
           {localPurchases.length > 0 && (
             <button
-              className="px-3 py-2 border rounded"
+              className="btn btn--danger"
               onClick={() => {
                 localStorage.removeItem("purchases:local");
                 window.location.reload();
@@ -97,14 +83,7 @@ export default function Purchases() {
       </div>
 
       {purchases.length === 0 ? (
-        <div className="space-y-2">
-          <p>No hay compras para mostrar.</p>
-          {hint && (
-            <pre className="text-sm bg-yellow-50 border border-yellow-200 p-2 rounded whitespace-pre-wrap">
-{hint}
-            </pre>
-          )}
-        </div>
+        <div className="rounded-lg border bg-white p-6 text-gray-600 whitespace-pre-wrap">{hint || "No hay compras para mostrar."}</div>
       ) : (
         <div className="space-y-3">
           {purchases.map((p, idx) => {
@@ -116,10 +95,10 @@ export default function Purchases() {
             const buyer = p.buyer || p.customer;
 
             return (
-              <div key={id} className="border rounded p-3">
+              <div key={id} className="rounded-lg border bg-white p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="font-semibold">Compra #{id}</div>
-                  <div className="text-sm text-gray-600">
+                  <div className="font-medium">Compra #{id}</div>
+                  <div className="text-sm text-gray-500">
                     {created ? new Date(created).toLocaleString() : "—"}
                   </div>
                 </div>
@@ -130,20 +109,18 @@ export default function Purchases() {
                   </div>
                 )}
 
-                <div className="text-sm">Estado: {status}</div>
-                <div className="text-sm">Total: ${total}</div>
+                <div className="text-sm text-gray-700 mt-1">Estado: {status}</div>
+                <div className="text-sm text-gray-700">Total: ${total}</div>
 
-                <h3 className="mt-2 font-medium">Items</h3>
+                <h3 className="mt-3 font-medium">Items</h3>
                 {items.length ? (
-                  <ul className="list-disc pl-6">
+                  <ul className="list-disc pl-6 text-sm">
                     {items.map((it, i2) => (
-                      <li key={i2}>
-                        {(it.type || it.ticket_type || it.name || "Ticket")}: {it.quantity ?? it.qty ?? 1}
-                      </li>
+                      <li key={i2}>{(it.type || it.ticket_type || it.name || "Ticket")}: {it.quantity ?? it.qty ?? 1}</li>
                     ))}
                   </ul>
                 ) : (
-                  <p className="text-gray-600">Sin detalle de items.</p>
+                  <p className="text-gray-600 text-sm">Sin detalle de items.</p>
                 )}
               </div>
             );
@@ -151,17 +128,14 @@ export default function Purchases() {
         </div>
       )}
 
-      {/* Panel de diagnóstico (muestra exactamente qué devolvió la API) */}
       {showDebug && (
-        <div className="mt-6">
-          <details open>
-            <summary className="cursor-pointer font-semibold">Depuración: respuesta cruda de /purchases</summary>
-            <pre className="text-xs bg-gray-100 border rounded p-2 overflow-auto">
-{JSON.stringify(raw, null, 2)}
-            </pre>
+        <div className="mt-4">
+          <details>
+            <summary className="cursor-pointer font-medium">Depuración: respuesta cruda de /purchases</summary>
+            <pre className="text-xs bg-gray-50 border rounded p-2 overflow-auto">{JSON.stringify(raw, null, 2)}</pre>
           </details>
         </div>
       )}
-    </div>
+    </section>
   );
 }

@@ -1,6 +1,9 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { api } from "../api"; // 👈 correcto
+import React, { useEffect, useMemo, useState, useRef } from "react";
+import { useNavigate, useParams, Link } from "react-router-dom";
+import { api } from "../api";
+
+const RESERVE_WINDOW_MS = 10 * 60 * 1000; // 10 minutos
+const MAX_PER_PERSON = 5;                 // 👈 LÍMITE
 
 export default function EventDetail() {
   const { id } = useParams();
@@ -9,64 +12,104 @@ export default function EventDetail() {
   const [event, setEvent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(null);
-  const [tickets, setTickets] = useState({}); // { [typeName]: quantity }
+
+  // Selección simple de tickets (puedes ampliar a más tipos luego)
+  const [qtyGeneral, setQtyGeneral] = useState(1);
 
   useEffect(() => {
-    let mounted = true;
-    api
-      .getEvent(id)
-      .then((res) => {
-        const ev = Array.isArray(res) ? res[0] : res;
-        if (mounted) {
-          setEvent(ev);
-          // Inicializa el mapa de cantidades en 0 por cada tipo válido
-          const init = {};
-          getTicketTypes(ev).forEach((t) => (init[t] = 0));
-          setTickets(init);
-        }
-      })
-      .catch((e) => setErr(e.message))
-      .finally(() => setLoading(false));
-    return () => (mounted = false);
+    let active = true;
+    (async () => {
+      setLoading(true);
+      setErr(null);
+      try {
+        const data = await api.getEvent(id);
+        const ev = Array.isArray(data) ? data[0] : data;
+        if (!active) return;
+        setEvent(ev || null);
+      } catch (e) {
+        if (!active) return;
+        setErr("No se pudo cargar el evento.");
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => { active = false; };
   }, [id]);
 
-  // Lista de nombres de tipo (strings) válidos para el backend
-  const ticketTypes = useMemo(() => getTicketTypes(event), [event]);
+  // ---- Carrusel: normaliza posibles campos de imágenes del backend ----
+  const gallery = useMemo(() => {
+    const pick = (x) => (typeof x === "string" ? x : x?.url || x?.src || null);
+    const arr = [
+      ...(event?.image ? [event.image] : []),
+      ...(Array.isArray(event?.images) ? event.images : []),
+      ...(Array.isArray(event?.gallery) ? event.gallery : []),
+      ...(Array.isArray(event?.photos) ? event.photos : []),
+    ]
+      .map(pick)
+      .filter(Boolean);
+    return Array.from(new Set(arr));
+  }, [event]);
 
-  const handleQty = (type, delta) => {
-    setTickets((prev) => {
-      const next = Math.max(0, (prev[type] ?? 0) + delta);
-      return { ...prev, [type]: next };
-    });
+  const [idx, setIdx] = useState(0);
+  const hasGallery = gallery.length > 0;
+  const safeIdx = hasGallery ? Math.max(0, Math.min(idx, gallery.length - 1)) : 0;
+
+  const prev = () => hasGallery && setIdx((i) => (i - 1 + gallery.length) % gallery.length);
+  const next = () => hasGallery && setIdx((i) => (i + 1) % gallery.length);
+
+  // teclado ← →
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "ArrowLeft") prev();
+      if (e.key === "ArrowRight") next();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [hasGallery, gallery.length]);
+
+  // swipe táctil
+  const touchStartX = useRef(null);
+  const onTouchStart = (e) => { touchStartX.current = e.touches?.[0]?.clientX ?? null; };
+  const onTouchEnd = (e) => {
+    if (touchStartX.current == null) return;
+    const dx = (e.changedTouches?.[0]?.clientX ?? touchStartX.current) - touchStartX.current;
+    if (Math.abs(dx) > 40) (dx > 0 ? prev() : next());
+    touchStartX.current = null;
   };
 
-  // Items seleccionados listos para API
-  const selectedItems = useMemo(
-    () =>
-      Object.entries(tickets)
-        .filter(([, qty]) => qty > 0)
-        .map(([type, quantity]) => ({ type, quantity })), // 👈 aquí va el NOMBRE, no el índice
-    [tickets]
+  // Items seleccionados y total para validar el límite
+  const items = useMemo(() => {
+    const arr = [];
+    if (qtyGeneral > 0) arr.push({ type: "General", quantity: qtyGeneral });
+    return arr;
+  }, [qtyGeneral]);
+
+  const totalSelected = useMemo(
+    () => items.reduce((sum, it) => sum + (Number(it.quantity) || 0), 0),
+    [items]
   );
 
-  const handleReserve = async () => {
+  // Helpers para +/- respetando el límite
+  const decGeneral = () => setQtyGeneral((q) => Math.max(0, q - 1));
+  const incGeneral = () =>
+    setQtyGeneral((q) => (totalSelected >= MAX_PER_PERSON ? q : Math.min(MAX_PER_PERSON, q + 1)));
+
+  async function handleReserve() {
     try {
-      if (selectedItems.length === 0) {
-        alert("Selecciona al menos un ticket");
+      if (!items.length) {
+        alert("Selecciona al menos 1 ticket.");
         return;
       }
-
-      const payload = { event_id: id, items: selectedItems };
-      // Para depurar si hace falta:
-      // console.log("Reserva → payload:", payload);
-
-      const reservation = await api.createReservation(payload);
-
+      if (totalSelected > MAX_PER_PERSON) {
+        alert(`Máximo ${MAX_PER_PERSON} entradas por persona.`);
+        return;
+      }
+      const reservation = await api.createReservation({ event_id: id, items });
       const reservationId = reservation.reservation_id || reservation.id || reservation._id;
       const total = reservation.total_price ?? reservation.total ?? 0;
-      const itemsFromApi = reservation.items ?? selectedItems;
+      const itemsFromApi = reservation.items ?? items;
+      const expiresAt = Date.now() + RESERVE_WINDOW_MS;
 
-      // backup por si recargan Checkout
       sessionStorage.setItem(
         `reservation:${reservationId}`,
         JSON.stringify({
@@ -75,117 +118,144 @@ export default function EventDetail() {
           total_price: total,
           status: reservation.status || "PENDING",
           event_id: id,
+          expires_at: expiresAt,
         })
       );
 
-      navigate("/checkout", {
-        state: { reservationId, items: itemsFromApi, total_price: total },
-      });
+      navigate("/checkout", { state: { reservationId, items: itemsFromApi, total_price: total } });
     } catch (e) {
-      alert("Error al crear reserva: " + e.message);
+      console.error(e);
+      alert("No se pudo crear la reserva. Intenta nuevamente.");
     }
-  };
+  }
 
   if (loading) return <div className="p-4">Cargando evento…</div>;
-  if (err) return <div className="p-4 text-red-600">Error: {err}</div>;
+  if (err) return <div className="p-4">{err}</div>;
   if (!event) return <div className="p-4">Evento no encontrado.</div>;
 
   return (
-    <div className="p-4 max-w-3xl mx-auto">
-      <button className="mb-3 text-blue-700" onClick={() => navigate(-1)}>
-        ← Volver
-      </button>
-
-      <div className="border rounded-lg overflow-hidden">
-        {event.image && (
-          <img src={event.image} alt={event.name} className="w-full h-60 object-cover" />
-        )}
-        <div className="p-4">
-          <h1 className="text-2xl font-bold">{event.name}</h1>
-          <p className="text-gray-700">{event.description}</p>
-          <p className="text-sm text-gray-600 mt-2">
-            Categoría: {event.category} — Ubicación: {event.location}
-          </p>
-          {event.date && (
-            <p className="text-sm text-gray-600">Fecha: {new Date(event.date).toLocaleString()}</p>
-          )}
-
-          <h2 className="text-xl font-semibold mt-5 mb-2">Tickets</h2>
-          {ticketTypes.length === 0 ? (
-            <p>No hay tipos de ticket definidos en este evento.</p>
+    <section className="grid gap-6 md:grid-cols-[1fr,0.9fr]">
+      {/* Panel izquierdo: imagen + info */}
+      <div className="rounded-lg border bg-white">
+        {/* ------- Carrusel ------- */}
+        <div className="carousel" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+          {hasGallery ? (
+            <img
+              className="w-full h-64 object-cover"
+              src={gallery[safeIdx]}
+              alt={event?.name || "Evento"}
+              loading="eager"
+            />
           ) : (
-            <div className="space-y-2">
-              {ticketTypes.map((type) => (
-                <div key={type} className="flex items-center justify-between border rounded px-3 py-2">
-                  <div className="flex-1">
-                    <p className="font-medium">{labelize(type)}</p>
-                    {/* Si tu evento trae precios por tipo, puedes mostrarlos aquí */}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      className="px-3 py-1 border rounded"
-                      onClick={() => handleQty(type, -1)}
-                    >
-                      -
-                    </button>
-                    <span className="w-8 text-center">{tickets[type] ?? 0}</span>
-                    <button
-                      className="px-3 py-1 border rounded"
-                      onClick={() => handleQty(type, +1)}
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <div className="w-full h-64 object-cover" />
           )}
 
-          <button
-            className="mt-4 px-4 py-2 rounded bg-black text-white disabled:opacity-50"
-            onClick={handleReserve}
-            disabled={selectedItems.length === 0}
-          >
-            Reservar
-          </button>
+          {gallery.length > 1 && (
+            <>
+              <button type="button" className="carousel-nav left" onClick={prev} aria-label="Anterior">‹</button>
+              <button type="button" className="carousel-nav right" onClick={next} aria-label="Siguiente">›</button>
+              <div className="carousel-dots" role="tablist" aria-label="Navegación de imágenes">
+                {gallery.map((_, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    className={`dot ${i === safeIdx ? "active" : ""}`}
+                    onClick={() => setIdx(i)}
+                    aria-current={i === safeIdx ? "true" : "false"}
+                    aria-label={`Ir a imagen ${i + 1}`}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="p-5">
+          <h1 className="text-gradient-blue">{event?.name || "Evento"}</h1>
+          <div className="text-sm text-gray-700">
+            {event?.date ? new Date(event.date).toLocaleString() : "Fecha por confirmar"}
+          </div>
+          {event?.location && <div className="text-sm text-gray-700 mt-1">Ubicación: {event.location}</div>}
+          {event?.category && <div className="text-sm text-gray-700 mt-1">Categoría: {event.category}</div>}
+          {event?.description && <p className="mt-3 text-gray-700">{event.description}</p>}
+
+          <div className="mt-4">
+            <Link to="/" className="btn btn--ghost">← Volver</Link>
+          </div>
         </div>
       </div>
-    </div>
+
+      {/* Panel derecho: selección de tickets / acciones */}
+      <aside className="rounded-lg border bg-white p-5">
+        <h2 className="card-title">Selecciona tus tickets</h2>
+        <p className="card-meta">
+          Máximo {MAX_PER_PERSON} entradas por persona. Reserva válida por 10 minutos una vez creada en el Checkout.
+        </p>
+
+        <div className="mt-3">
+          <label className="grid gap-1">
+            <span>Entrada General</span>
+            <div className="row" style={{ gap: ".5rem", alignItems: "center" }}>
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={decGeneral}
+                disabled={qtyGeneral <= 0}
+              >
+                −
+              </button>
+
+              <input
+                type="number"
+                min={0}
+                max={MAX_PER_PERSON}
+                value={qtyGeneral}
+                onChange={(e) => {
+                  const v = Math.max(0, Math.min(MAX_PER_PERSON, parseInt(e.target.value || "0", 10)));
+                  setQtyGeneral(v);
+                }}
+                style={{ width: 80, textAlign: "center" }}
+              />
+
+              <button
+                type="button"
+                className="btn"
+                onClick={incGeneral}
+                disabled={totalSelected >= MAX_PER_PERSON}
+                title={totalSelected >= MAX_PER_PERSON ? `Máximo ${MAX_PER_PERSON}` : "Agregar una entrada"}
+              >
+                +
+              </button>
+            </div>
+            <span className="card-meta" style={{ marginTop: ".25rem" }}>
+              Seleccionadas: {totalSelected}/{MAX_PER_PERSON}
+            </span>
+          </label>
+        </div>
+
+        {/* ⚠ Cambiado a .summary-box para contraste en ambos modos */}
+        <div className="mt-4 summary-box">
+          <h3 className="text-base font-medium">Resumen</h3>
+          {items.length ? (
+            <ul className="mt-2 text-sm list-disc pl-6">
+              {items.map((it, i) => (<li key={i}>{it.type}: {it.quantity}</li>))}
+            </ul>
+          ) : (
+            <p className="text-gray-600 mt-1">Aún no seleccionas tickets.</p>
+          )}
+        </div>
+
+        <div className="actions mt-4">
+          <button
+            className="w-full px-4 py-2 rounded btn--gradient hover:opacity-90"
+            onClick={handleReserve}
+            disabled={totalSelected === 0 || totalSelected > MAX_PER_PERSON}
+            title={totalSelected === 0 ? "Selecciona al menos 1" : totalSelected > MAX_PER_PERSON ? `Máximo ${MAX_PER_PERSON}` : "Reservar"}
+          >
+            Reservar y continuar
+          </button>
+        </div>
+      </aside>
+    </section>
   );
-}
-
-/** ===================== Helpers ===================== **/
-
-// Devuelve SIEMPRE un array de strings con los nombres de tipos válidos
-function getTicketTypes(ev) {
-  if (!ev) return [];
-
-  // Caso 1: backend expone ticket_types como array de objetos
-  // ej: [{ type: "general", price: 10000 }, { type: "vip", price: 20000 }]
-  if (Array.isArray(ev.ticket_types)) {
-    return ev.ticket_types.map((t) => t.type || t.name).filter(Boolean);
-  }
-
-  // Caso 2: backend expone tickets como ARRAY de objetos
-  // ej: [{ type: "general" }, { type: "vip" }]
-  if (Array.isArray(ev.tickets)) {
-    return ev.tickets.map((t) => t.type || t.name).filter(Boolean);
-  }
-
-  // Caso 3: backend expone tickets como OBJETO (no array)
-  // ej: { general: {...}, vip: {...} }
-  if (ev.tickets && typeof ev.tickets === "object") {
-    return Object.keys(ev.tickets);
-  }
-
-  // Fallback: al menos un tipo genérico
-  return ["general"];
-}
-
-function labelize(s) {
-  try {
-    return s.charAt(0).toUpperCase() + s.slice(1).replace(/_/g, " ");
-  } catch {
-    return s;
-  }
 }

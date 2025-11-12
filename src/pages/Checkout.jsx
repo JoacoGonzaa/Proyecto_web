@@ -1,240 +1,280 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api";
+
+const RESERVE_WINDOW_MS = 10 * 60 * 1000; // ⏱️ 10 minutos
 
 export default function Checkout() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // reservationId inicial (puede venir por state)
-  const initialReservationId = location.state?.reservationId;
-
-  const [reservation, setReservation] = useState(null); // { reservation_id, items, total_price, status, event_id }
+  const [reservation, setReservation] = useState(null);
+  const [event, setEvent] = useState(null);
+  const [buyerName, setBuyerName] = useState("");
+  const [buyerEmail, setBuyerEmail] = useState("");
   const [loading, setLoading] = useState(true);
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState(null);
 
-  // Carga info de reserva desde state o sessionStorage
+  // ⏱️ estado del contador
+  const [remainingMs, setRemainingMs] = useState(null);
+  const [expired, setExpired] = useState(false);
+
+  // Carga reserva desde sessionStorage (creada en EventDetail)
   useEffect(() => {
-    const rid = initialReservationId;
-    if (!rid) {
-      setError("No se proporcionó ID de reserva");
-      setLoading(false);
-      return;
+    const rid = location?.state?.reservationId;
+    const key = rid ? `reservation:${rid}` : null;
+    let saved = null;
+    if (key) {
+      try { saved = JSON.parse(sessionStorage.getItem(key) || "null"); } catch {}
+    } else {
+      // fallback: tomar la última que exista
+      const lastKey = Object.keys(sessionStorage).find((k) => k.startsWith("reservation:"));
+      try { saved = lastKey ? JSON.parse(sessionStorage.getItem(lastKey)) : null; } catch {}
     }
-    // 1) state
-    if (location.state?.items || location.state?.total_price !== undefined) {
-      setReservation({
-        reservation_id: rid,
-        items: location.state.items || [],
-        total_price: location.state.total_price ?? 0,
-        status: "PENDING",
-        event_id: location.state?.event_id, // por si lo mandas en navigate
-      });
-      setLoading(false);
-      return;
+
+    // Si no hay expires_at (reservas anteriores), darle 10 min desde ahora
+    if (saved) {
+      const now = Date.now();
+      const expires = typeof saved.expires_at === "number" ? saved.expires_at : now + RESERVE_WINDOW_MS;
+      saved.expires_at = expires;
+      setReservation(saved);
+      setRemainingMs(Math.max(0, expires - now));
+      setExpired(expires <= now);
     }
-    // 2) sessionStorage
-    const cached = sessionStorage.getItem(`reservation:${rid}`);
-    if (cached) {
-      setReservation(JSON.parse(cached));
-      setLoading(false);
-      return;
-    }
-    // 3) fallback
-    setReservation({ reservation_id: rid, items: [], total_price: 0, status: "PENDING" });
+
     setLoading(false);
-  }, [initialReservationId, location.state]);
+  }, [location?.state?.reservationId]);
 
-  // Error formatter (FastAPI)
-  function formatFastapiError(e) {
-    try {
-      const details = Array.isArray(e?.body?.detail) ? e.body.detail : null;
-      if (details && details.length) {
-        return details
-          .map((d) => {
-            const where = Array.isArray(d.loc) ? d.loc.join(" > ") : String(d.loc ?? "");
-            return `${where}: ${d.msg}`;
-          })
-          .join(" | ");
+  // Trae datos del evento para el panel derecho
+  useEffect(() => {
+    if (!reservation?.event_id) return;
+    let active = true;
+    (async () => {
+      try {
+        const ev = await api.getEvent(reservation.event_id);
+        if (!active) return;
+        setEvent(Array.isArray(ev) ? ev[0] : ev);
+      } catch {
+        setEvent(null); // no bloquear el checkout si falla
       }
-      return e?.message || JSON.stringify(e);
-    } catch {
-      return e?.message || String(e);
-    }
-  }
+    })();
+    return () => (active = false);
+  }, [reservation?.event_id]);
 
-  // Re-crea una reserva si la actual está inactiva
-  async function recreateReservationIfNeeded(err) {
-    const msg = (err?.message || "").toLowerCase();
-    const inactive = msg.includes("not active") || msg.includes("inactive") || msg.includes("expired");
-    if (!inactive) return null;
-
-    // Necesitamos event_id e items para re-crear
-    const event_id =
-      reservation?.event_id ||
-      location.state?.event_id ||
-      JSON.parse(sessionStorage.getItem(`reservation:${reservation?.reservation_id}`) || "{}")?.event_id;
-
-    const items = reservation?.items || [];
-
-    if (!event_id || !items?.length) {
-      throw new Error("La reserva está inactiva y no hay datos para recrearla (event_id/items faltan). Vuelve al detalle del evento y reserva de nuevo.");
-    }
-
-    const newRes = await api.createReservation({ event_id, items });
-    const newId = newRes.reservation_id || newRes.id || newRes._id;
-    const total = newRes.total_price ?? newRes.total ?? reservation?.total_price ?? 0;
-    const itemsFromApi = newRes.items ?? items;
-
-    // Actualiza estado y cache
-    const newObj = {
-      reservation_id: newId,
-      items: itemsFromApi,
-      total_price: total,
-      status: newRes.status || "PENDING",
-      event_id,
+  // ⏱️ Intervalo 1s para actualizar el contador y expirar
+  useEffect(() => {
+    if (!reservation?.expires_at) return;
+    const tick = () => {
+      const now = Date.now();
+      const left = Math.max(0, reservation.expires_at - now);
+      setRemainingMs(left);
+      setExpired(left === 0);
+      if (left === 0) {
+        try { sessionStorage.removeItem(`reservation:${reservation.reservation_id}`); } catch {}
+      }
     };
-    setReservation(newObj);
-    sessionStorage.setItem(`reservation:${newId}`, JSON.stringify(newObj));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [reservation?.reservation_id, reservation?.expires_at]);
 
-    // Borra cache anterior
-    if (reservation?.reservation_id) {
-      sessionStorage.removeItem(`reservation:${reservation.reservation_id}`);
+  // Reintenta crear reserva si la existente está inválida (conserva la expiración original)
+  async function recreateReservationIfNeeded(e) {
+    if (!reservation?.items?.length || !reservation?.event_id) return null;
+    try {
+      const res = await api.createReservation({
+        event_id: reservation.event_id,
+        items: reservation.items,
+      });
+      const newId = res.reservation_id || res.id || res._id;
+      const total = res.total_price ?? res.total ?? 0;
+      const itemsFromApi = res.items ?? reservation.items;
+
+      const updated = {
+        reservation_id: newId,
+        items: itemsFromApi,
+        total_price: total,
+        status: res.status || "PENDING",
+        event_id: reservation.event_id,
+        expires_at: reservation.expires_at,
+      };
+      sessionStorage.setItem(`reservation:${newId}`, JSON.stringify(updated));
+      setReservation(updated);
+      return newId;
+    } catch {
+      return null;
     }
-
-    return newId;
   }
 
-  // Campos del comprador
-  const [buyerName, setBuyerName] = useState("");
-  const [buyerEmail, setBuyerEmail] = useState("");
+  const itemsList = useMemo(() => reservation?.items ?? [], [reservation?.items]);
+  const totalPrice = reservation?.total_price ?? 0;
 
-  const handleConfirmPurchase = async () => {
+  function fmt(ms) {
+    const s = Math.max(0, Math.floor(ms / 1000));
+    const mm = String(Math.floor(s / 60)).padStart(2, "0");
+    const ss = String(s % 60).padStart(2, "0");
+    return `${mm}:${ss}`;
+  }
+
+  async function handleConfirmPurchase() {
+    if (expired) {
+      setError("La reserva expiró. Vuelve a seleccionar tus tickets.");
+      return;
+    }
     if (!reservation?.reservation_id) return;
-
     setConfirming(true);
     setError(null);
 
     const tryCheckout = async (rid) => {
       const payload = {
         reservation_id: rid,
-        buyer: {
-          name: buyerName.trim(),
-          email: buyerEmail.trim(),
-        },
+        buyer: { name: buyerName.trim(), email: buyerEmail.trim() },
         payment_method: "card_simulated",
       };
-      console.log("Checkout → payload:", payload);
-      const result = await api.checkout(payload);
-      console.log("Checkout → result:", result);
-      return result;
+      return await api.checkout(payload);
     };
 
     try {
-      // Validación rápida de comprador
-      if (!buyerName.trim() || !buyerEmail.trim()) {
+      if (!buyerName.trim() || !buyerEmail.trim())
         throw new Error("Completa nombre y correo para continuar.");
-      }
 
-      // 1) intento con la reserva actual
       let result;
       try {
         result = await tryCheckout(reservation.reservation_id);
       } catch (e1) {
-        const msg1 = formatFastapiError(e1);
-        console.warn("Checkout intento 1 falló:", msg1);
-
-        // 2) si está inactiva, re-crear y reintentar
         const newId = await recreateReservationIfNeeded(e1);
-        if (!newId) throw e1; // no era inactiva, propaga el error original
-
+        if (!newId) throw e1;
         result = await tryCheckout(newId);
       }
 
-      // OK
-      sessionStorage.removeItem(`reservation:${reservation.reservation_id}`);
+      try { sessionStorage.removeItem(`reservation:${reservation.reservation_id}`); } catch {}
 
-      // ✅ Guardar la compra local para que aparezca en "Mis Compras"
+      // respaldo local (opcional)
       try {
         const purchaseObj = result?.purchase ?? result ?? {};
-        const list = JSON.parse(localStorage.getItem("purchases:local") || "[]");
-        const pid = purchaseObj.purchase_id || purchaseObj.id || purchaseObj._id || `${Date.now()}`;
-        const dedup = list.filter(p => (p.purchase_id || p.id || p._id) !== pid);
-        localStorage.setItem("purchases:local", JSON.stringify([...dedup, { ...purchaseObj, _id: pid }]));
+        const locals = JSON.parse(localStorage.getItem("purchases:local") || "[]");
+        locals.unshift(purchaseObj);
+        localStorage.setItem("purchases:local", JSON.stringify(locals.slice(0, 50)));
       } catch {}
 
-      alert(`Compra confirmada ✅\nTotal: $${result?.total_price ?? reservation?.total_price ?? 0}`);
       navigate("/purchases");
     } catch (e) {
-      const msg = formatFastapiError(e);
-      alert("Error al confirmar compra:\n" + msg);
-      setError(msg);
+      setError(e?.message || "Ocurrió un error al confirmar.");
     } finally {
       setConfirming(false);
     }
-  };
+  }
 
   if (loading) return <div className="p-4">Cargando checkout…</div>;
   if (!reservation) return <div className="p-4">No hay información de la reserva.</div>;
 
   return (
-    <div className="p-4 max-w-2xl mx-auto">
-      <button className="mb-3 text-blue-700" onClick={() => navigate(-1)}>
-        ← Volver
-      </button>
-
-      <h1 className="text-2xl font-bold mb-4">Checkout</h1>
-
-      <div className="border rounded p-4 space-y-4">
-        <div className="text-sm text-gray-700">
-          <span className="font-semibold">Reservation ID:</span> {reservation.reservation_id}
+    <section className="checkout-two">
+      {/* Izquierda: formulario */}
+      <div className="checkout-card">
+        <div className="flex items-center justify-between">
+          <h1 className="text-xl font-semibold">Checkout</h1>
+          <button className="btn--ghost" onClick={() => navigate(-1)}>← Volver</button>
         </div>
 
-        <div>
-          <h2 className="text-lg font-semibold mb-2">Datos del comprador</h2>
-          <div className="grid gap-3 sm:grid-cols-2">
+        <div className="mt-2 text-sm text-gray-700" style={{display:"flex",gap:"8px",alignItems:"center",flexWrap:"wrap"}}>
+          <span><span className="font-medium">Reservation ID:</span> {reservation.reservation_id}</span>
+
+          <span
+            className={`badge ${expired ? "badge--danger" : "badge--warn"}`}
+            title={expired ? "La reserva expiró" : "Tiempo restante para completar la compra"}
+          >
+            {expired ? "Expirada" : `Reserva: ${fmt(remainingMs ?? 0)}`}
+          </span>
+        </div>
+
+        {expired && (
+          <p className="mt-2 text-sm" style={{color:"#dc2626"}}>
+            Tu reserva expiró. Vuelve a la página del evento para seleccionar tus tickets nuevamente.
+          </p>
+        )}
+
+        <div className="form-grid mt-3">
+          <label className="grid gap-1">
+            <span>Nombre y apellido</span>
             <input
-              className="border rounded px-3 py-2 w-full"
-              placeholder="Nombre y apellido"
+              placeholder="Ej: Camilo Pérez"
               value={buyerName}
               onChange={(e) => setBuyerName(e.target.value)}
+              disabled={expired}
             />
+          </label>
+          <label className="grid gap-1">
+            <span>Correo</span>
             <input
-              className="border rounded px-3 py-2 w-full"
               type="email"
-              placeholder="Correo"
+              placeholder="correo@dominio.cl"
               value={buyerEmail}
               onChange={(e) => setBuyerEmail(e.target.value)}
+              disabled={expired}
             />
-          </div>
-          {error && <p className="text-sm text-red-600 mt-2">Último error: {error}</p>}
+          </label>
         </div>
 
-        <div>
-          <h2 className="text-lg font-semibold mb-2">Tickets</h2>
-          {reservation.items?.length ? (
-            <ul className="list-disc pl-6">
-              {reservation.items.map((item, idx) => (
-                <li key={idx}>
-                  {item.type}: {item.quantity}
-                </li>
+        {error && <p className="mt-2 text-sm" style={{color:"#dc2626"}}>⚠ {error}</p>}
+
+        {/* ⚠ Cambiado a .summary-box para contraste en ambos modos */}
+        <div className="mt-4 summary-box">
+          <h2 className="text-base font-medium">Resumen</h2>
+          {itemsList?.length ? (
+            <ul className="mt-2 text-sm list-disc pl-6">
+              {itemsList.map((item, idx) => (
+                <li key={idx}>{item.type}: {item.quantity}</li>
               ))}
             </ul>
           ) : (
-            <p className="text-gray-600">No se proporcionaron detalles de tickets.</p>
+            <p className="text-gray-600 mt-1">No se proporcionaron detalles de tickets.</p>
           )}
-          <p className="mt-3 font-semibold">Total: ${reservation.total_price ?? 0}</p>
+          <p className="mt-3 font-semibold">Total: ${totalPrice}</p>
         </div>
 
-        <button
-          className="mt-2 px-4 py-2 rounded bg-black text-white disabled:opacity-50"
-          disabled={confirming}
-          onClick={handleConfirmPurchase}
-        >
-          {confirming ? "Confirmando..." : "Confirmar compra"}
-        </button>
+        <div className="actions mt-4">
+          {/* 🔁 Antes era un bg-black (poco visible en oscuro). Ahora gradiente accesible. */}
+          <button
+            className="w-full px-4 py-2 rounded btn--gradient hover:opacity-90 disabled:opacity-50"
+            disabled={confirming || expired}
+            onClick={handleConfirmPurchase}
+          >
+            {confirming ? "Confirmando..." : "Confirmar compra"}
+          </button>
+        </div>
       </div>
-    </div>
+
+      {/* Derecha: cubo con info del concierto (imagen + datos) */}
+      <aside className="order-summary">
+        {event?.image ? (
+          <img className="banner" src={event.image} alt={event?.name || "Evento"} />
+        ) : (
+          <div className="banner" />
+        )}
+        <div className="body">
+          <div className="title">{event?.name || "Evento"}</div>
+          <div className="meta">
+            {event?.date ? new Date(event.date).toLocaleString() : "Fecha por confirmar"}
+          </div>
+          {event?.location && <div className="meta">Ubicación: {event.location}</div>}
+          {event?.category && <div className="meta">Categoría: {event.category}</div>}
+
+          <h3 className="mt-3" style={{fontWeight:700}}>Tus tickets</h3>
+          {itemsList?.length ? (
+            <ul className="mt-1 text-sm list-disc pl-6">
+              {itemsList.map((it, i) => (
+                <li key={i}>{it.type}: {it.quantity}</li>
+              ))}
+            </ul>
+          ) : (
+            <div className="meta mt-1">Sin selección</div>
+          )}
+
+          <div className="total">Total: ${totalPrice}</div>
+        </div>
+      </aside>
+    </section>
   );
 }
