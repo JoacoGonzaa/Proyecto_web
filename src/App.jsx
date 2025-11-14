@@ -1,11 +1,16 @@
 import React, { useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route, Link } from "react-router-dom";
+
 import Home from "./pages/Home.jsx";
 import EventDetail from "./pages/EventDetail.jsx";
 import Checkout from "./pages/Checkout.jsx";
 import Purchases from "./pages/Purchases.jsx";
-import logo from "./assets/logo.png"; // ✅ logo dentro de src/assets/
 
+import logo from "./assets/logo.png";
+
+/* =====================================================
+   SHELL — HEADER + MAIN + FOOTER
+===================================================== */
 function Shell({ children }) {
   const STORAGE_KEY = "theme";
   const [theme, setTheme] = useState(null);
@@ -14,7 +19,10 @@ function Shell({ children }) {
   useEffect(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved === "dark" || saved === "light") return setTheme(saved);
+      if (saved === "dark" || saved === "light") {
+        setTheme(saved);
+        return;
+      }
       const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
       setTheme(prefersDark ? "dark" : "light");
     } catch {
@@ -22,76 +30,79 @@ function Shell({ children }) {
     }
   }, []);
 
-  // Aplicar tema
+  // Aplicar tema al <html>
   useEffect(() => {
     if (!theme) return;
     const root = document.documentElement;
-    if (theme === "dark") root.setAttribute("data-theme", "dark");
-    else root.removeAttribute("data-theme");
-    localStorage.setItem(STORAGE_KEY, theme);
+
+    if (theme === "dark") {
+      root.setAttribute("data-theme", "dark");
+    } else {
+      root.removeAttribute("data-theme");
+    }
+
+    try {
+      localStorage.setItem(STORAGE_KEY, theme);
+    } catch {
+      // ignorar errores de localStorage
+    }
   }, [theme]);
 
-  const toggleTheme = () => setTheme((t) => (t === "dark" ? "light" : "dark"));
+  const toggleTheme = () => {
+    setTheme((t) => (t === "dark" ? "light" : "dark"));
+  };
 
   return (
-    // ✅ flex-col para que el footer quede siempre abajo
-    <div className="flex flex-col min-h-screen text-[color:var(--ink)] bg-[color:var(--bg)] transition-colors duration-300">
-      
-      {/* 🔷 HEADER */}
-      <header className="border-b backdrop-blur bg-[color:var(--card)]/80 sticky top-0 z-50 transition-colors duration-300">
+    <div className="min-h-screen flex flex-col bg-[color:var(--bg)] text-[color:var(--ink)] transition-colors duration-300">
+
+      {/* ===========================
+          HEADER
+      ============================ */}
+      <header className="sticky top-0 z-50">
         <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
 
-          {/* 🔹 Logo + Marca “Tickets Blue” */}
+          {/* Logo + Nombre EN LÍNEA */}
           <Link
             to="/"
-            className="flex items-center gap-3 font-extrabold tracking-tight"
+            className="brand-link font-extrabold tracking-tight"
             style={{
               fontSize: "1.4rem",
               color: "var(--primary)",
               letterSpacing: "-0.02em",
             }}
           >
-            
             <div
               style={{
                 width: "34px",
                 height: "34px",
                 borderRadius: "10px",
                 background: "white",
-                boxShadow: "0 2px 5px rgba(0,0,0,0.08)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 overflow: "hidden",
+                boxShadow: "0 2px 6px rgba(0,0,0,0.08)",
               }}
             >
               <img
                 src={logo}
-                alt="Tickets Blue logo"
+                alt="Logo Tickets Blue"
                 style={{
                   width: "26px",
                   height: "26px",
                   objectFit: "contain",
-                  filter: theme === "dark" ? "brightness(1.15)" : "none",
+                  filter: theme === "dark" ? "brightness(1.2)" : "none",
                 }}
               />
             </div>
 
             <span>
               Tickets{" "}
-              <span
-                style={{
-                  background: "linear-gradient(90deg, #027DE0 0%, #3EE6C5 100%)",
-                  WebkitBackgroundClip: "text",
-                  WebkitTextFillColor: "transparent",
-                }}
-              >
-                   <span className="text-gradient-blue">Blue</span></span>
-
+              <span className="text-gradient-blue">Blue</span>
             </span>
           </Link>
 
-          {/* 🔸 Navegación */}
+          {/* NAV */}
           <nav className="flex items-center gap-2">
             <Link
               to="/"
@@ -99,20 +110,22 @@ function Shell({ children }) {
             >
               Inicio
             </Link>
+
+            {/* Botón Mis compras con estilo de botón principal */}
             <Link
-               to="/purchases"
-                className="px-3 py-1.5 rounded btn--gradient hover:opacity-90 transition-opacity"
+              to="/purchases"
+              className="btn btn--gradient"
             >
-              Mis Compras
+              Mis compras
             </Link>
 
-            {/* 🌙☀️ Botón modo oscuro */}
+            {/* Toggle Tema */}
             <button
+              type="button"
               onClick={toggleTheme}
               className="btn btn--ghost ml-2"
-              title={theme === "dark" ? "Cambiar a claro" : "Cambiar a oscuro"}
-              aria-label="Cambiar tema"
               style={{ lineHeight: 1 }}
+              aria-label="Alternar tema claro/oscuro"
             >
               {!theme ? "…" : theme === "dark" ? "☀️ Claro" : "🌙 Oscuro"}
             </button>
@@ -120,15 +133,23 @@ function Shell({ children }) {
         </div>
       </header>
 
-      {/* CONTENIDO PRINCIPAL */}
-      <main className="flex-1 max-w-6xl mx-auto px-4 py-6 w-full">
-        {children}
+      {/* ===========================
+          CONTENIDO
+      ============================ */}
+      <main className="flex-1 w-full">
+        {/* .container separa el contenido de los bordes */}
+        <div className="container">
+          {children}
+        </div>
       </main>
 
-      {/* 🔻 FOOTER fijo al fondo */}
-      <footer className="mt-auto border-t text-sm text-[color:var(--muted)] transition-colors duration-300">
+      {/* ===========================
+          FOOTER PEGADO ABAJO
+      ============================ */}
+      <footer className="mt-auto text-sm transition-colors duration-300">
         <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
           <div>© {new Date().getFullYear()} Tickets Blue</div>
+
           <div className="flex gap-3 text-[color:var(--secondary)]">
             <span>@tickets_blue</span>
             <span>·</span>
@@ -140,6 +161,9 @@ function Shell({ children }) {
   );
 }
 
+/* =====================================================
+   APP — RUTAS PRINCIPALES
+===================================================== */
 export default function App() {
   return (
     <BrowserRouter>
